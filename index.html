@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktivna Karta Afrike - Malarija</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(-45deg, #f4f4f4, #e0eafc, #cfdef3, #a1c4fd, #c2e9fb);
+            background-size: 400% 400%;
+            animation: gradientBG 12s ease-in-out infinite;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        @keyframes gradientBG {
+            0% {background-position: 0% 50%;}
+            50% {background-position: 100% 50%;}
+            100% {background-position: 0% 50%;}
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 1400px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,249,250,0.95) 100%);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .map-container {
+            flex: 3;
+            padding: 20px;
+            min-width: 600px;
+            position: relative; 
+        }
+        .charts-area {
+            flex: 2;
+            padding: 20px;
+            min-width: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-container, .line-chart-container {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .controls {
+            width: 100%;
+            padding: 15px 20px;
+            background: linear-gradient(135deg, rgba(233,236,239,0.9) 0%, rgba(248,249,250,0.9) 100%);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(222,226,230,0.5);
+            box-sizing: border-box;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+        }
+        .controls label {
+            margin-right: 8px;
+            font-weight: bold;
+        }
+        .controls select, .controls input[type="range"] {
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(206,212,218,0.7);
+            margin-right: 15px;
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(4px);
+        }
+        .controls input[type="range"] {
+            width: 200px;
+        }
+        #tooltip {
+            position: absolute; 
+            background: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(29,53,87,0.9) 100%);
+            color: white;
+            padding: 12px; 
+            border-radius: 8px; 
+            font-size: 13px; 
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.2s;
+            transform: scale(0.98);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
+            z-index: 10; 
+            white-space: nowrap;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .country:hover ~ #tooltip, .bar:hover ~ #tooltip {
+            opacity: 1;
+            transform: scale(1.03);
+        }
+        svg {
+            display: block;
+            margin: auto;
+            width: 100%; 
+            height: auto; 
+        }
+        .country {
+            stroke: #666;
+            stroke-width: 0.5px;
+            transition: fill 0.3s ease, stroke 0.2s ease;
+        }
+        .country:hover {
+             stroke: #000;
+            stroke-width: 2.5px;
+            filter: drop-shadow(0 0 8px rgba(29,53,87,0.6));
+            transition: filter 0.3s, stroke-width 0.3s;
+        }
+        .selected-country {
+            stroke: #e63946 !important;
+            stroke-width: 2.5px !important; 
+            fill-opacity: 0.7; 
+        }
+        .country-label { 
+            font-size: 8px; 
+            fill: #1d3557;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none; 
+            opacity: 0.7; 
+            paint-order: stroke; 
+            stroke: #f1faee;
+            stroke-width: 0.3em; 
+            stroke-linejoin: round; 
+            transition: opacity 0.3s ease, font-size 0.3s ease;
+        }
+        .legend-container {
+            margin-top: 20px;
+            padding: 15px; 
+            background: linear-gradient(135deg, rgba(248,249,250,0.9) 0%, rgba(233,236,239,0.9) 100%);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(222,226,230,0.5);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column; 
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1); 
+        }
+        .legend-title {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #212529; 
+        }
+        .legend-items-wrapper {
+            display: flex;
+            flex-wrap: wrap; 
+            justify-content: center;
+            align-items: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 10px; 
+            font-size: 12px; 
+        }
+        .legend-color {
+            width: 22px; 
+            height: 22px;
+            margin-right: 8px;
+            border: 1px solid #adb5bd; 
+            border-radius: 4px;
+        }
+        .bar {
+            transition: fill 0.3s ease, y 0.3s ease, height 0.3s ease;
+            cursor: pointer;
+        }
+        .bar:hover {
+            fill-opacity: 0.7;
+        }
+        .axis path, .axis line {
+            fill: none;
+            stroke: #495057;
+            shape-rendering: crispEdges;
+        }
+        .axis text {
+            font-size: 11px;
+            fill: #495057;
+        }
+        .axis-label {
+            font-size: 13px;
+            text-anchor: middle;
+            fill: #343a40;
+            font-weight: bold;
+        }
+        .line-chart-path {
+            fill: none;
+            stroke: #1f77b4;
+            stroke-width: 2px;
+            transition: d 0.3s ease;
+        }
+        .line-chart-dot {
+            fill: #1f77b4;
+            stroke: #fff;
+            stroke-width: 1.5px;
+            r: 4;
+            cursor: pointer;
+            transition: r 0.2s ease, fill 0.2s ease;
+        }
+        .line-chart-dot:hover {
+            r: 6;
+            fill: #ff7f0e;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #0056b3;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+         #reset-zoom-btn, #play-pause-btn {
+            padding: 10px 16px;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+            transition: all 0.3s ease;
+            margin: 0 5px;
+        }
+        #reset-zoom-btn:hover, #play-pause-btn:hover {
+            background: linear-gradient(135deg, #0056b3 0%, #004085 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,123,255,0.4);
+        }
+        #play-pause-btn {
+            background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+            box-shadow: 0 4px 12px rgba(40,167,69,0.3);
+        }
+        #play-pause-btn:hover {
+            background: linear-gradient(135deg, #1e7e34 0%, #155724 100%);
+            box-shadow: 0 6px 20px rgba(40,167,69,0.4);
+        }
+        #play-pause-btn.playing {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            box-shadow: 0 4px 12px rgba(220,53,69,0.3);
+        }
+        #play-pause-btn.playing:hover {
+            background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%);
+            box-shadow: 0 6px 20px rgba(220,53,69,0.4);
+        }
+        .line-chart-container svg { 
+             height: 300px; 
+        }
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+            }
+            .map-container, .charts-area { 
+                min-width: 100%;
+            }
+            .controls {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .controls select, .controls input[type="range"], #reset-zoom-btn, #play-pause-btn {
+                width: 90%;
+                margin-right: 0;
+            }
+            .country-label {
+                font-size: 6px; 
+                stroke-width: 0.25em; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Vizualizacija podataka o Malariji u Africi</h1>
+
+    <div class="controls">
+        <div>
+            <label for="year-slider">Godina:</label>
+            <input type="range" id="year-slider" min="2007" max="2017" value="2017">
+            <span id="year-value">2017</span>
+        </div>
+        <div>
+            <label for="metric-select">Pokazatelj:</label>
+            <select id="metric-select">
+                <option value="Incidence of malaria (per 1,000 population at risk)">Broj novozaraženih (na 1000 ugroženih)</option>
+                <option value="Malaria cases reported"> Ukupni prijavljeni slučajevi malarije</option>
+            </select>
+        </div>
+        <button id="play-pause-btn">▶ Play</button>
+        <button id="reset-zoom-btn">Resetiraj Zoom</button>
+    </div>
+
+    <div class="container">
+        <div class="map-container">
+            <div id="tooltip"></div>
+            <svg id="map-svg"></svg>
+            <div class="legend-container" id="legend"></div>
+        </div>
+        <div class="charts-area"> 
+            <div class="chart-container">
+                <h2 id="chart-title">Top 10 Država</h2>
+                <svg id="bar-chart-svg"></svg>
+            </div>
+            <div class="line-chart-container">
+                <h2 id="line-chart-title">Smrtnost od Malarije</h2>
+                <svg id="line-chart-svg"></svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const mapWidth = 700;
+        const mapHeight = 650;
+        
+        const barChartContainerWidth = 500; 
+        const barChartContainerHeight = 500; 
+        const barChartMargin = { top: 50, right: 30, bottom: 120, left: 70 };
+
+        const lineChartContainerWidth = 500; 
+        const lineChartContainerHeight = 300; 
+        const lineChartMargin = { top: 30, right: 30, bottom: 60, left: 70 };
+
+        let isPlaying = false;
+        let animationTimer = null;
+
+        const mapSvg = d3.select("#map-svg")
+            .attr("width", "100%") 
+            .attr("height", "100%")
+            .attr("viewBox", `0 0 ${mapWidth} ${mapHeight}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+
+        const g = mapSvg.append("g"); 
+        const gPaths = g.append("g").attr("class", "country-paths"); 
+        const gLabels = g.append("g").attr("class", "country-labels"); 
+
+        const barChartSvg = d3.select("#bar-chart-svg")
+            .attr("width", "100%")
+            .attr("height", "100%")
+            .attr("viewBox", `0 0 ${barChartContainerWidth} ${barChartContainerHeight}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+
+        const chartG = barChartSvg.append("g")
+            .attr("transform", `translate(${barChartMargin.left},${barChartMargin.top})`);
+
+        const lineChartSvg = d3.select("#line-chart-svg")
+            .attr("width", "100%")
+            .attr("height", "100%") 
+            .attr("viewBox", `0 0 ${lineChartContainerWidth} ${lineChartContainerHeight}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+        
+        const lineChartG = lineChartSvg.append("g")
+            .attr("transform", `translate(${lineChartMargin.left},${lineChartMargin.top})`);
+
+        const tooltip = d3.select("#tooltip");
+
+        const projection = d3.geoMercator()
+            .center([20, 0]) 
+            .scale(350)
+            .translate([mapWidth / 2, mapHeight / 2]);
+
+        const pathGenerator = d3.geoPath().projection(projection);
+
+        const colorScheme = ["#ffffcc", "#ffeda0", "#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"];
+        const colorScale = d3.scaleQuantile().range(colorScheme);
+
+        let selectedCountryForLineChart = null; 
+
+        const zoom = d3.zoom()
+            .scaleExtent([1, 12])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+                const currentScale = event.transform.k;
+                gLabels.selectAll(".country-label") 
+                    .style("font-size", `${Math.max(3, 8 / currentScale)}px`) 
+                    .attr("opacity", currentScale > 1.5 ? 0.7 : (currentScale > 1 ? 0.3 : 0)); 
+            });
+        mapSvg.call(zoom);
+        
+        d3.select("#reset-zoom-btn").on("click", () => {
+            mapSvg.transition().duration(750).call(
+                zoom.transform,
+                d3.zoomIdentity,
+                d3.zoomTransform(mapSvg.node()).invert([mapWidth / 2, mapHeight / 2])
+            );
+            gLabels.selectAll(".country-label").style("font-size", "8px").attr("opacity", 0.7); 
+            selectedCountryForLineChart = null; 
+            updateLineChart([], null); 
+            d3.select("#line-chart-title").text("Smrtnost od Malarije (Odaberite državu na karti)");
+            gPaths.selectAll(".country.selected-country")
+                 .classed("selected-country", false)
+                 .style("stroke", "#666")
+                 .style("stroke-width", "0.5px");
+        });
+
+        Promise.all([
+            d3.json("africa.geo.json"), 
+            d3.csv("DatasetAfricaMalaria.csv"),
+            d3.csv("malaria-deaths.csv") 
+        ]).then(([geoData, malariaData, deathData]) => {
+            const processedMalariaData = {};
+            malariaData.forEach(d => {
+                const year = +d.Year;
+                const countryCode = d["Country Code"];
+                if (!processedMalariaData[year]) {
+                    processedMalariaData[year] = {};
+                }
+                processedMalariaData[year][countryCode] = d;
+                Object.keys(d).forEach(key => {
+                    if (key !== "Country Name" && key !== "Country Code" && key !== "Year" && key !== "geometry" && key !== "latitude" && key !== "longitude") {
+                        d[key] = +d[key]; 
+                    }
+                });
+            });
+
+            const processedDeathData = d3.group(deathData, d => d.Država); 
+            processedDeathData.forEach((values, key) => { 
+                values.forEach(v => {
+                    v.Godina = +v.Godina;
+                    v.Broj_Smrtnih_Slučajeva = +v.Broj_Smrtnih_Slučajeva;
+                });
+            });
+
+            const yearSlider = d3.select("#year-slider");
+            const yearValueDisplay = d3.select("#year-value");
+            const metricSelect = d3.select("#metric-select");
+            const playPauseBtn = d3.select("#play-pause-btn");
+
+            const availableYears = Object.keys(processedMalariaData).map(y => +y).sort((a,b) => a-b);
+            yearSlider.attr("min", d3.min(availableYears))
+                      .attr("max", d3.max(availableYears))
+                      .property("value", d3.max(availableYears)); 
+            yearValueDisplay.text(d3.max(availableYears));
+
+   
+            playPauseBtn.on("click", function() {
+                if (isPlaying) {
+                    isPlaying = false;
+                    clearInterval(animationTimer);
+                    d3.select(this)
+                        .classed("playing", false)
+                        .text("▶ Play");
+                } else {
+                    isPlaying = true;
+                    d3.select(this)
+                        .classed("playing", true)
+                        .text("⏸ Pause");
+                    
+                    const currentYear = +yearSlider.property("value");
+                    const maxYear = +yearSlider.attr("max");
+                    if (currentYear >= maxYear) {
+                        yearSlider.property("value", yearSlider.attr("min"));
+                        updateVisualizations();
+                    }
+
+                    animationTimer = setInterval(() => {
+                        const currentYear = +yearSlider.property("value");
+                        const maxYear = +yearSlider.attr("max");
+                        
+                        if (currentYear < maxYear) {
+                            yearSlider.property("value", currentYear + 1);
+                            updateVisualizations();
+                        } else {
+                            isPlaying = false;
+                            clearInterval(animationTimer);
+                            playPauseBtn
+                                .classed("playing", false)
+                                .text("▶ Play");
+                        }
+                    }, 4000); 
+                }
+            });
+
+            function updateVisualizations() {
+                const selectedYear = +yearSlider.property("value");
+                const selectedMetric = metricSelect.property("value");
+                yearValueDisplay.text(selectedYear);
+                d3.select("#chart-title").text(`Top 10 Država - ${metricSelect.select("option:checked").text()} (${selectedYear})`);
+
+                const currentYearData = processedMalariaData[selectedYear] || {};
+                
+                const metricValues = Object.values(currentYearData)
+                    .map(d => d[selectedMetric])
+                    .filter(v => v !== null && !isNaN(v) && v > 0); 
+                
+                if (metricValues.length > 0) {
+                    colorScale.domain(metricValues);
+                } else {
+                     colorScale.domain([0,1]); 
+                }
+
+                gPaths.selectAll(".country") 
+                    .data(geoData.features, d => d.properties.adm0_a3)
+                    .join("path")
+                    .attr("class", "country")
+                    .attr("d", pathGenerator)
+                    .attr("fill", d => {
+                        const countryData = currentYearData[d.properties.adm0_a3];
+                        const value = countryData ? countryData[selectedMetric] : undefined;
+                        return (value !== null && !isNaN(value) && value > 0) ? colorScale(value) : "#ccc";
+                    })
+                    .on("mousemove", function(event, d) {
+                        tooltip.style("opacity", 1);
+                        const countryData = currentYearData[d.properties.adm0_a3];
+                        const value = countryData ? countryData[selectedMetric] : undefined;
+                        const metricValueString = (value !== null && !isNaN(value)) ? d3.format(".2s")(value) : "N/A";
+                        
+                        const [mouseX, mouseY] = d3.pointer(event, d3.select(".map-container").node());
+                        tooltip.html(`<strong>${d.properties.name}</strong><br>${metricSelect.select("option:checked").text()}: ${metricValueString}`)
+                            .style("left", (mouseX + 15) + "px") 
+                            .style("top", (mouseY) + "px"); 
+                    })
+                    .on("mouseover", function(event,d){
+                         d3.select(this).raise().style("stroke-width", "1.5px").style("stroke", "black");
+                    })
+                    .on("mouseout", function() {
+                        if (!d3.select(this).classed("selected-country")) { 
+                           d3.select(this).style("stroke-width", "0.5px").style("stroke", "#666");
+                        }
+                        tooltip.style("opacity", 0);
+                    })
+                    .on("click", function(event, d) {
+                        gPaths.selectAll(".country.selected-country") 
+                         .classed("selected-country", false)
+                         .style("stroke", "#666")
+                         .style("stroke-width", "0.5px");
+                        
+                        d3.select(this)
+                          .classed("selected-country", true)
+                          .style("stroke", "red")
+                          .style("stroke-width", "2.5px");
+                        
+                        selectedCountryForLineChart = d.properties.name; 
+                        const countryDeathData = processedDeathData.get(selectedCountryForLineChart) || [];
+                        updateLineChart(countryDeathData, selectedCountryForLineChart);
+
+                        const [[x0, y0], [x1, y1]] = pathGenerator.bounds(d);
+                        event.stopPropagation();
+                        mapSvg.transition().duration(750).call(
+                            zoom.transform,
+                            d3.zoomIdentity
+                                .translate(mapWidth / 2, mapHeight / 2)
+                                .scale(Math.min(8, 0.9 / Math.max((x1 - x0) / mapWidth, (y1 - y0) / mapHeight)))
+                                .translate(-(x0 + x1) / 2, -(y0 + y1) / 2),
+                            d3.pointer(event, mapSvg.node())
+                        );
+                    });
+
+                const currentScale = d3.zoomTransform(mapSvg.node()).k;
+                gLabels.selectAll(".country-label") 
+                    .data(geoData.features, d => d.properties.adm0_a3)
+                    .join("text")
+                    .attr("class", "country-label")
+                    .attr("transform", d => {
+                        const centroid = pathGenerator.centroid(d);
+                        if (isNaN(centroid[0]) || isNaN(centroid[1])) { return "translate(-1000,-1000)"; } 
+                        return `translate(${centroid})`;
+                    })
+                    .text(d => {
+                        const area = pathGenerator.area(d);
+                        if (area > 2 || currentScale > 2.5) { 
+                             return d.properties.name_sort || d.properties.name;
+                        }
+                        return "";
+                    })
+                    .style("font-size", `${Math.max(3, 8 / currentScale)}px`)
+                    .attr("opacity", currentScale > 1.8 ? 0.7 : (currentScale > 1.2 ? 0.4 : 0));
+
+                updateLegend(selectedMetric, metricValues);
+                updateBarChart(currentYearData, selectedMetric, geoData);
+                 if (selectedCountryForLineChart) { 
+                    const countryDeathData = processedDeathData.get(selectedCountryForLineChart) || [];
+                    updateLineChart(countryDeathData, selectedCountryForLineChart);
+                } else {
+                    updateLineChart([], null); 
+                     d3.select("#line-chart-title").text("Smrtnost od Malarije (Odaberite državu na karti)");
+                }
+            }
+
+            function updateLegend(metric, currentMetricValues) {
+                const legendContainer = d3.select("#legend");
+                legendContainer.html(""); 
+
+                const currentMetricText = metricSelect.select("option:checked").text();
+                legendContainer.append("div")
+                    .attr("class", "legend-title")
+                    .text(currentMetricText + ":");
+
+                const legendItemsWrapper = legendContainer.append("div")
+                    .attr("class", "legend-items-wrapper");
+                
+                const uniqueValidValues = [...new Set(currentMetricValues.filter(v => v !== null && !isNaN(v) && v > 0))].sort((a, b) => a - b);
+
+                if (uniqueValidValues.length === 0) {
+                    legendItemsWrapper.append("span").text("Nema dostupnih podataka za prikaz legende.");
+                    return;
+                }
+
+                const legendData = [];
+                const range = colorScale.range();
+
+                if (uniqueValidValues.length === 1) {
+                    legendData.push({ color: colorScale(uniqueValidValues[0]), label: `${d3.format(".2s")(uniqueValidValues[0])}` });
+                } else if (uniqueValidValues.length < range.length) {
+                    uniqueValidValues.forEach(value => {
+                        legendData.push({ color: colorScale(value), label: `${d3.format(".2s")(value)}` });
+                    });
+                } else {
+                    const quantiles = colorScale.quantiles(); 
+                     if (quantiles.length > 0) {
+                        legendData.push({ color: range[0], label: `< ${d3.format(".2s")(quantiles[0])}` });
+                        for (let i = 0; i < quantiles.length -1; i++) {
+                             legendData.push({ color: range[i+1], label: `${d3.format(".2s")(quantiles[i])} - ${d3.format(".2s")(quantiles[i+1])}` });
+                        }
+                        legendData.push({ color: range[quantiles.length], label: `> ${d3.format(".2s")(quantiles[quantiles.length -1])}` });
+                     } else { 
+                          const minVal = d3.min(uniqueValidValues);
+                          const maxVal = d3.max(uniqueValidValues);
+                          if (minVal !== undefined && maxVal !== undefined && minVal < maxVal) {
+                            const numSteps = Math.min(range.length, 5); 
+                            const step = (maxVal - minVal) / numSteps;
+                             for (let i = 0; i < numSteps; i++) {
+                                const lowerBound = minVal + i * step;
+                                const upperBound = minVal + (i + 1) * step;
+                                const colorIndex = Math.floor(i * (range.length / numSteps));
+                                legendData.push({ color: range[colorIndex], label: `${d3.format(".2s")(lowerBound)} - ${d3.format(".2s")(upperBound)}` });
+                            }
+                          } else if (minVal !== undefined) { 
+                               legendData.push({ color: range[Math.floor(range.length/2)], label: `${d3.format(".2s")(minVal)}` });
+                          }
+                     }
+                }
+                
+                if (legendData.length === 0) {
+                    legendItemsWrapper.append("span").text("Nema dovoljno podataka za prikaz legende.");
+                    return;
+                }
+
+                legendData.forEach(item => {
+                    const legendItem = legendItemsWrapper.append("div").attr("class", "legend-item");
+                    legendItem.append("div")
+                        .attr("class", "legend-color")
+                        .style("background-color", item.color);
+                    legendItem.append("span").html(item.label);
+                });
+            }
+
+            function updateBarChart(yearData, metric, geoD) { 
+                chartG.selectAll("*").remove(); 
+
+                const countryArray = Object.entries(yearData)
+                    .map(([code, data]) => {
+                        const geoFeature = geoD.features.find(f => f.properties.adm0_a3 === code);
+                        return {
+                            countryCode: code,
+                            countryName: geoFeature ? geoFeature.properties.name : code,
+                            value: data[metric]
+                        };
+                    })
+                    .filter(d => d.value !== null && !isNaN(d.value) && d.value > 0) 
+                    .sort((a, b) => b.value - a.value)
+                    .slice(0, 10);
+
+                if (countryArray.length === 0) {
+                    chartG.append("text")
+                        .attr("x", (barChartContainerWidth - barChartMargin.left - barChartMargin.right) / 2)
+                        .attr("y", (barChartContainerHeight - barChartMargin.top - barChartMargin.bottom) / 2)
+                        .attr("text-anchor", "middle")
+                        .text("Nema podataka za grafikon.");
+                    return;
+                }
+                
+                const innerWidth = barChartContainerWidth - barChartMargin.left - barChartMargin.right;
+                const innerHeight = barChartContainerHeight - barChartMargin.top - barChartMargin.bottom;
+
+                const xScale = d3.scaleBand()
+                    .domain(countryArray.map(d => d.countryName))
+                    .range([0, innerWidth])
+                    .padding(0.2); 
+
+                const yScale = d3.scaleLinear()
+                    .domain([0, d3.max(countryArray, d => d.value) || 1]) 
+                    .range([innerHeight, 0])
+                    .nice();
+
+                chartG.append("g")
+                    .attr("class", "x-axis")
+                    .attr("transform", `translate(0,${innerHeight})`)
+                    .call(d3.axisBottom(xScale))
+                    .selectAll("text")
+                    .attr("transform", "rotate(-45)")
+                    .style("text-anchor", "end")
+                    .style("font-size", "10px");
+                
+                chartG.append("g")
+                    .attr("class", "y-axis")
+                    .call(d3.axisLeft(yScale).ticks(5).tickFormat(d3.format(".2s")));
+
+                chartG.selectAll(".bar")
+                    .data(countryArray)
+                    .join(
+                        enter => enter.append("rect")
+                            .attr("class", "bar")
+                            .attr("x", d => xScale(d.countryName))
+                            .attr("y", innerHeight)
+                            .attr("width", xScale.bandwidth())
+                            .attr("height", 0)
+                            .attr("fill", "#69b3a2")
+                            .call(enter => enter.transition().duration(750)
+                                .attr("y", d => yScale(d.value))
+                                .attr("height", d => innerHeight - yScale(d.value))),
+                        update => update
+                            .call(update => update.transition().duration(750)
+                                .attr("x", d => xScale(d.countryName))
+                                .attr("y", d => yScale(d.value))
+                                .attr("width", xScale.bandwidth())
+                                .attr("height", d => innerHeight - yScale(d.value))),
+                        exit => exit
+                            .call(exit => exit.transition().duration(750)
+                                .attr("y", innerHeight)
+                                .attr("height", 0)
+                                .remove())
+                    )
+                    .on("mousemove", function(event, d) { 
+                        const [mouseX, mouseY] = d3.pointer(event, d3.select(".charts-area").node()); 
+                        tooltip.style("opacity", 1)
+                               .html(`<strong>${d.countryName}</strong><br>${metricSelect.select("option:checked").text()}: ${d3.format(".2s")(d.value)}`)
+                               .style("left", (mouseX + barChartMargin.left + 10) + "px") 
+                               .style("top", (mouseY + barChartMargin.top - 15) + "px");
+                        d3.select(this).attr("fill", "#40918c");
+                    })
+                    .on("mouseout", function() {
+                        tooltip.style("opacity", 0);
+                        d3.select(this).attr("fill", "#69b3a2");
+                    })
+                    .on("click", function(event, d) {
+                        const countryFeature = geoData.features.find(f => f.properties.name === d.countryName);
+                        if (countryFeature) {
+                            gPaths.selectAll(".country")
+                                .filter(mapD => mapD.properties.adm0_a3 === countryFeature.properties.adm0_a3)
+                                .dispatch("click", {bubbles: true, cancelable: true, detail: countryFeature });
+                        }
+                    });
+                
+                chartG.append("text")
+                    .attr("class", "axis-label")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 0 - barChartMargin.left + 20) 
+                    .attr("x", 0 - (innerHeight / 2))
+                    .attr("dy", "1em")
+                    .style("text-anchor", "middle")
+                    .text(metricSelect.select("option:checked").text());
+            }
+
+            function updateLineChart(countryDeathData, countryName) {
+                lineChartG.selectAll("*").remove(); 
+                d3.select("#line-chart-title").text(`Smrtnost od Malarije: ${countryName || '(Odaberite državu)'}`);
+
+                if (!countryDeathData || countryDeathData.length === 0) {
+                    lineChartG.append("text")
+                        .attr("x", (lineChartContainerWidth - lineChartMargin.left - lineChartMargin.right) / 2)
+                        .attr("y", (lineChartContainerHeight - lineChartMargin.top - lineChartMargin.bottom) / 2)
+                        .attr("text-anchor", "middle")
+                        .text(countryName ? "Nema podataka o smrtnosti." : "Odaberite državu na karti.");
+                    return;
+                }
+
+                const innerWidth = lineChartContainerWidth - lineChartMargin.left - lineChartMargin.right;
+                const innerHeight = lineChartContainerHeight - lineChartMargin.top - lineChartMargin.bottom;
+
+                const xScaleTime = d3.scaleTime()
+                    .domain(d3.extent(countryDeathData, d => new Date(d.Godina, 0, 1))) 
+                    .range([0, innerWidth]);
+
+                const yScaleLine = d3.scaleLinear()
+                    .domain([0, d3.max(countryDeathData, d => d.Broj_Smrtnih_Slučajeva) || 1])
+                    .range([innerHeight, 0])
+                    .nice();
+
+                lineChartG.append("g")
+                    .attr("class", "x-axis")
+                    .attr("transform", `translate(0,${innerHeight})`)
+                    .call(d3.axisBottom(xScaleTime).ticks(Math.min(countryDeathData.length, 7)).tickFormat(d3.timeFormat("%Y")));
+
+                lineChartG.append("g")
+                    .attr("class", "y-axis")
+                    .call(d3.axisLeft(yScaleLine).ticks(5).tickFormat(d3.format(".2s")));
+
+                const line = d3.line()
+                    .x(d => xScaleTime(new Date(d.Godina, 0, 1)))
+                    .y(d => yScaleLine(d.Broj_Smrtnih_Slučajeva));
+
+                lineChartG.append("path")
+                    .datum(countryDeathData)
+                    .attr("class", "line-chart-path")
+                    .attr("d", line)
+                    .attr("stroke-dasharray", function() { const length = this.getTotalLength(); return `${length} ${length}`; })
+                    .attr("stroke-dashoffset", function() { return this.getTotalLength(); })
+                    .transition()
+                    .duration(1000)
+                    .attr("stroke-dashoffset", 0);
+
+                lineChartG.selectAll(".dot")
+                    .data(countryDeathData)
+                    .enter().append("circle")
+                    .attr("class", "line-chart-dot")
+                    .attr("cx", d => xScaleTime(new Date(d.Godina, 0, 1)))
+                    .attr("cy", d => yScaleLine(d.Broj_Smrtnih_Slučajeva))
+                    .attr("r", 0)
+                    .on("mousemove", function(event, d) {
+                        const [mouseX, mouseY] = d3.pointer(event, d3.select(".charts-area").node());
+                        tooltip.style("opacity", 1)
+                               .html(`<strong>${countryName} (${d.Godina})</strong><br>Smrtni slučajevi: ${d3.format(",")(d.Broj_Smrtnih_Slučajeva)}`)
+                               .style("left", (mouseX + lineChartMargin.left + 10) + "px")
+                               .style("top", (mouseY + barChartContainerHeight + lineChartMargin.top - 15) + "px");
+                        d3.select(this).transition().duration(100).attr("r", 6).style("fill", "#ff7f0e");
+                    })
+                    .on("mouseout", function() {
+                        tooltip.style("opacity", 0);
+                        d3.select(this).transition().duration(100).attr("r", 4).style("fill", "#1f77b4");
+                    })
+                    .transition()
+                    .duration(500)
+                    .delay((d,i) => i * 50)
+                    .attr("r", 4);
+                
+                lineChartG.append("text")
+                    .attr("class", "axis-label")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 0 - lineChartMargin.left + 20)
+                    .attr("x", 0 - (innerHeight / 2))
+                    .attr("dy", "1em")
+                    .style("text-anchor", "middle")
+                    .text("Broj Smrtnih Slučajeva");
+            }
+
+            yearSlider.on("input", function() {
+                // Zaustavi animaciju ako korisnik ručno mijenja slider
+                if (isPlaying) {
+                    isPlaying = false;
+                    clearInterval(animationTimer);
+                    playPauseBtn
+                        .classed("playing", false)
+                        .text("▶ Play");
+                }
+                updateVisualizations();
+            });
+            
+            metricSelect.on("change", updateVisualizations);
+
+            updateVisualizations();
+            updateLineChart([], null); 
+
+        }).catch(error => {
+            console.error("Greška pri učitavanju podataka:", error);
+            d3.select(".container").html("<p>Došlo je do greške pri učitavanju podataka. Molimo pokušajte kasnije.</p>");
+        });
+    </script>
+</body>
+</html>
